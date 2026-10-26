@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // المسؤول = مستند admins/{uid} تنشئه بيدك من Firebase Console فقط (الكتابة من التطبيق ممنوعة)
+    function isAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // 1. حسابات المستخدمين: القراءة والكتابة مقتصرة تماماً على صاحب الـ UID نفسه فقط
+    match /users/{uid} {
+      // المسؤول يقرأ فقط (لا يكتب ولا يحذف)
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // 2. مستندات المرضى والمزامنة الحية
+    match /patients/{code} {
+      // القراءة: مسموحة للمريض نفسه وللمرافقين المسجلين في مصفوفة caregiverUids
+      allow read: if request.auth != null && (
+        isAdmin() ||
+        resource.data.patientUid == request.auth.uid ||
+        request.auth.uid in resource.data.caregiverUids
+      );
+
+      // الإنشاء: متاح فقط للمريض وبشرط إلزامي أن تبدأ caregiverUids بمصفوفة فارغة []
+      allow create: if request.auth != null &&
+        request.resource.data.patientUid == request.auth.uid &&
+        request.resource.data.caregiverUids.size() == 0;
+
+      // التحديث:
+      // (أ) المريض صاحب السجل: يحدث كامل بياناته (state, alerts, caregiverUids)
+      // ولا يسمح له بتغيير معرّف الحساب الأساسي patientUid
+      allow update: if request.auth != null && (
+        (
+          resource.data.patientUid == request.auth.uid &&
+          request.resource.data.patientUid == resource.data.patientUid
+        ) ||
+        // (ب) المرافق الجديد: ربط نفسه مباشرة عبر إضافة uid الخاص به فقط إلى caregiverUids
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caregiverUids']) &&
+          request.resource.data.caregiverUids.hasAll(resource.data.caregiverUids) &&
+          request.resource.data.caregiverUids.size() == resource.data.caregiverUids.size() + 1 &&
+          request.auth.uid in request.resource.data.caregiverUids &&
+          request.resource.data.patientUid == resource.data.patientUid
+        ) ||
+        // (ج) المرافق الحالي: فك ارتباطه بنفسه فقط (إزالة uid الخاص به فقط)
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caregiverUids']) &&
+          resource.data.caregiverUids.hasAll(request.resource.data.caregiverUids) &&
+          request.resource.data.caregiverUids.size() == resource.data.caregiverUids.size() - 1 &&
+          !(request.auth.uid in request.resource.data.caregiverUids) &&
+          request.auth.uid in resource.data.caregiverUids &&
+          request.resource.data.patientUid == resource.data.patientUid
+        ) ||
+        // (د) المرافق الحالي: تعديل المخزون فقط عبر حقل stockEdits وبشرط تفعيل allowEditMeds من المريض
+        (
+          request.auth.uid in resource.data.caregiverUids &&
+          resource.data.allowEditMeds == true &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockEdits']) &&
+          request.resource.data.patientUid == resource.data.patientUid
+        )
+      );
+
+      // الحذف: ممنوع حماية للسجلات الطبية
+      allow delete: if false;
+    }
+
+    // رفض كافة المسارات الأخرى لضمان أعلى درجات الأمان
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

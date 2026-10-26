@@ -1,0 +1,6 @@
+{
+  "name": "رفيقي (RAFEEQI)",
+  "description": "تطبيق رفيقي لإدارة الأدوية والرعاية الصحية اليومية للمرضى وكبار السن والمرافقين في العالم العربي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

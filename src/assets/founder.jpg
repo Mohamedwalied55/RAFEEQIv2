@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" rx="30" fill="#0F9D8A"/>
+  <circle cx="100" cy="75" r="35" fill="#E6FFFA"/>
+  <path d="M40 170 C40 125, 70 120, 100 120 C130 120, 160 125, 160 170 Z" fill="#E6FFFA"/>
+  <text x="100" y="190" text-anchor="middle" fill="#FFFFFF" font-size="12" font-family="sans-serif" font-weight="bold">محمد وليد أبو عجور</text>
+</svg>

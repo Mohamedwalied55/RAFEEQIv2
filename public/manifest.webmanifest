@@ -1,0 +1,18 @@
+{
+  "name": "رفيقي | RAFEEQI",
+  "short_name": "رفيقي",
+  "description": "تطبيق إدارة الأدوية والرعاية الصحية اليومية للمرضى والمرافقين في العالم العربي",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAF9",
+  "theme_color": "#0F9D8A",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

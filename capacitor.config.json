@@ -1,0 +1,15 @@
+{
+  "appId": "app.rafeeqi.health",
+  "appName": "رفيقي",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#0F9D8A",
+      "sound": "alarm.wav"
+    }
+  }
+}
