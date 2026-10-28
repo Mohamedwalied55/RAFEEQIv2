@@ -51,6 +51,10 @@ let activeUid: string | null = (() => {
   }
 })();
 
+function isRealAccount(): boolean {
+  return Boolean(activeUid) && activeUid !== 'guest_local';
+}
+
 function scopedKey(key: string): string {
   return activeUid && USER_DATA_KEYS.includes(key) ? `${key}:${activeUid}` : key;
 }
@@ -250,7 +254,9 @@ export function mergeTombstones(
 
 export const Storage = {
   getMedications(): Medication[] {
-    return safeGet<Medication[]>(STORAGE_KEYS.MEDS, initialSampleMeds);
+    const meds = safeGet<Medication[]>(STORAGE_KEYS.MEDS, initialSampleMeds);
+    // الحسابات الحقيقية لا تعرض الأدوية التجريبية (فهي لا تدخل في المنبّه ولا الالتزام ولا المزامنة)
+    return isRealAccount() ? meds.filter((m) => !m.isExample && !m.id.startsWith('med_sample_')) : meds;
   },
   saveMedications(meds: Medication[]): void {
     safeSet(STORAGE_KEYS.MEDS, meds);
@@ -264,7 +270,7 @@ export const Storage = {
   },
 
   getVitals(): VitalMeasurement[] {
-    return safeGet<VitalMeasurement[]>(STORAGE_KEYS.VITALS, [
+    const vitals = safeGet<VitalMeasurement[]>(STORAGE_KEYS.VITALS, [
       {
         id: 'vit_sample_1',
         type: 'bp',
@@ -282,6 +288,7 @@ export const Storage = {
         notes: 'سكر صائم طبيعي',
       },
     ]);
+    return isRealAccount() ? vitals.filter((v) => !v.id.startsWith('vit_sample_')) : vitals;
   },
   saveVitals(vitals: VitalMeasurement[]): void {
     safeSet(STORAGE_KEYS.VITALS, vitals);

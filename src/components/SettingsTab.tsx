@@ -4,7 +4,7 @@
  * - المنبّه والأذونات والصوت والخط والوضع الداكن
  * - الدور ثابت ولا يمكن تبديله
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Settings,
   Bell,
@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { AppSettings, CaregiverConfig, UserProfile, FontSizeLevel } from '../types';
 import { PhoneWithCountryPicker } from './PhoneWithCountryPicker';
+import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { speakArabicText, playAlarmSound, stopAlarmSound } from '../utils/audio';
 import { openWhatsAppChat } from '../utils/whatsapp';
 
@@ -53,6 +54,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [testingVoice, setTestingVoice] = useState(false);
   const [testingChime, setTestingChime] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // مسودة بيانات المرافقين: لا تُحفظ إلا عند الضغط على زر «حفظ»
+  const [cgDraft, setCgDraft] = useState<CaregiverConfig>(caregiverConfig);
+  useEffect(() => {
+    setCgDraft(caregiverConfig);
+  }, [caregiverConfig]);
+  const cgDirty = JSON.stringify(cgDraft) !== JSON.stringify(caregiverConfig);
+  const digits = (v?: string) => (v || '').replace(/\D/g, '');
+  const cgPhoneInvalid =
+    (cgDraft.enabled && digits(cgDraft.phone).length > 0 && digits(cgDraft.phone).length < 7) ||
+    (cgDraft.enabled && digits(cgDraft.secondaryPhone).length > 0 && digits(cgDraft.secondaryPhone).length < 7);
 
   const pairingCode = profile?.pairingCode || 'RAF-DEMO1234';
 
@@ -376,13 +388,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </h3>
           <input
             type="checkbox"
-            checked={caregiverConfig.enabled}
-            onChange={(e) => onUpdateCaregiver({ ...caregiverConfig, enabled: e.target.checked })}
+            checked={cgDraft.enabled}
+            onChange={(e) => setCgDraft({ ...cgDraft, enabled: e.target.checked })}
             className="w-5 h-5 text-teal-600 rounded-md"
           />
         </div>
 
-        {caregiverConfig.enabled && (
+        {cgDraft.enabled && (
           <div className="space-y-4 pt-1">
             {/* المرافق الأساسي */}
             <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
@@ -391,17 +403,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </span>
               <input
                 type="text"
-                value={caregiverConfig.name}
-                onChange={(e) => onUpdateCaregiver({ ...caregiverConfig, name: e.target.value })}
+                value={cgDraft.name}
+                onChange={(e) => setCgDraft({ ...cgDraft, name: e.target.value })}
                 placeholder="اسم المرافق (مثال: ابني محمد)"
                 className="w-full h-11 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-xs outline-none"
               />
               <PhoneWithCountryPicker
                 label="رقم واتساب المرافق الأساسي"
-                countryCode={caregiverConfig.countryCode}
-                phone={caregiverConfig.phone}
-                onCountryCodeChange={(code) => onUpdateCaregiver({ ...caregiverConfig, countryCode: code })}
-                onPhoneChange={(p) => onUpdateCaregiver({ ...caregiverConfig, phone: p })}
+                countryCode={cgDraft.countryCode}
+                phone={cgDraft.phone}
+                onCountryCodeChange={(code) => setCgDraft({ ...cgDraft, countryCode: code })}
+                onPhoneChange={(p) => setCgDraft({ ...cgDraft, phone: p })}
               />
             </div>
 
@@ -412,22 +424,38 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </span>
               <input
                 type="text"
-                value={caregiverConfig.secondaryName || ''}
-                onChange={(e) => onUpdateCaregiver({ ...caregiverConfig, secondaryName: e.target.value })}
+                value={cgDraft.secondaryName || ''}
+                onChange={(e) => setCgDraft({ ...cgDraft, secondaryName: e.target.value })}
                 placeholder="اسم المرافق الثانوي (مثال: الطبيب أو الابنة)"
                 className="w-full h-11 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 text-xs outline-none"
               />
               <PhoneWithCountryPicker
                 label="رقم واتساب المرافق الثانوي"
-                countryCode={caregiverConfig.secondaryCountryCode || '+20'}
-                phone={caregiverConfig.secondaryPhone || ''}
-                onCountryCodeChange={(code) => onUpdateCaregiver({ ...caregiverConfig, secondaryCountryCode: code })}
-                onPhoneChange={(p) => onUpdateCaregiver({ ...caregiverConfig, secondaryPhone: p })}
+                countryCode={cgDraft.secondaryCountryCode || '+20'}
+                phone={cgDraft.secondaryPhone || ''}
+                onCountryCodeChange={(code) => setCgDraft({ ...cgDraft, secondaryCountryCode: code })}
+                onPhoneChange={(p) => setCgDraft({ ...cgDraft, secondaryPhone: p })}
               />
             </div>
           </div>
         )}
+        <div className="pt-1">
+          {cgPhoneInvalid && (
+            <p className="text-[11px] text-rose-600 mb-2">رقم الهاتف قصير جداً. تأكد من كتابة الرقم كاملاً.</p>
+          )}
+          <button
+            onClick={() => onUpdateCaregiver(cgDraft)}
+            disabled={!cgDirty || cgPhoneInvalid}
+            className="w-full h-12 rounded-xl bg-teal-600 text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            <Check className="w-4 h-4" />
+            {cgDirty ? 'حفظ بيانات المرافقين' : 'لا توجد تغييرات للحفظ'}
+          </button>
+        </div>
       </div>
+
+      {/* حالة النظام */}
+      <DiagnosticsPanel />
 
       {/* حجم الخط والوضع الداكن والتباين العالي */}
       <div className="bg-white dark:bg-slate-800 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-xs space-y-4">

@@ -3,6 +3,7 @@
  * يفصل تماماً بين واجهة المريض (PatientApp) وواجهة المرافق (CaregiverApp)
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { syncStatus, describeError } from './utils/syncStatus';
 import { onAuthStateChanged } from 'firebase/auth';
 import { App as CapApp } from '@capacitor/app';
 import { auth, isFirebaseConfigured } from './lib/firebase';
@@ -69,6 +70,7 @@ export default function App() {
   // حالة المزامنة مع السحابة
   const [cloudHydrated, setCloudHydrated] = useState(false);
   const [syncError, setSyncError] = useState(false);
+  const [syncErrorDetail, setSyncErrorDetail] = useState('');
 
   // منبّه الجرعة الحية للمريض والتطبيق مفتوح
   const [activeAlarm, setActiveAlarm] = useState<{
@@ -172,22 +174,11 @@ export default function App() {
           }
         }
       } else {
-        // المصدر الوحيد للحقيقة: عند خلو الجلسة من المستخدم نعود لشاشة الدخول ونصفر الحالة
+        // عند خلو الجلسة نعود لشاشة الدخول فقط. لا نمسح البيانات المحلية تلقائياً:
+        // بياناتها معزولة بمعرّف كل مستخدم، والمسح يتم فقط عند الضغط على «تسجيل الخروج».
         loadedUidRef.current = null;
-        setProfile((prev) => {
-          if (prev && prev.uid !== 'guest_local') {
-            Storage.clearUserData();
-            setMedications(Storage.getMedications());
-            setDoseLogs(Storage.getDoseLogs());
-            setVitals(Storage.getVitals());
-            setReminders(Storage.getReminders());
-            setWater(Storage.getWaterConfig());
-            setCaregiverConfig(Storage.getCaregiverConfig());
-            setCloudHydrated(false);
-            return null;
-          }
-          return prev;
-        });
+        setProfile((prev) => (prev && prev.uid !== 'guest_local' ? null : prev));
+        setCloudHydrated(false);
       }
     });
     return () => unsub();
@@ -211,7 +202,6 @@ export default function App() {
         const cloudState = await pullPatientStateFromCloud(profile.pairingCode!);
         if (!isMounted) return;
         if (cloudState) {
-          const lastSyncTime = Storage.getLastSyncTimestamp();
           const cloudLastUpdated = cloudState.lastUpdated || '';
 
           // دمج سجلات الحذف (Tombstones) حتى لا يعود دواء أو قياس تم حذفه على جهاز آخر أو أثناء انقطاع النت
@@ -243,18 +233,8 @@ export default function App() {
               }
             }
 
-            const finalMeds: Medication[] = [];
-            for (const [id, m] of mergedMap.entries()) {
-              const inCloud = cloudMeds.some((cm) => cm.id === id);
-              if (inCloud) {
-                finalMeds.push(m);
-              } else {
-                const mTime = m.updatedAt || m.startDate || '';
-                if (!lastSyncTime || (mTime && mTime > lastSyncTime)) {
-                  finalMeds.push(m);
-                }
-              }
-            }
+            // لا نُسقط أي دواء محلي (لم يُحذف صراحةً)، حتى لو لم يصل للسحابة بعد
+            const finalMeds: Medication[] = [...mergedMap.values()];
             setMedications(finalMeds);
             Storage.saveMedications(finalMeds);
           }
@@ -299,18 +279,7 @@ export default function App() {
                 }
               }
             }
-            const finalVitals: VitalMeasurement[] = [];
-            for (const [id, v] of mergedMap.entries()) {
-              const inCloud = cloudVitals.some((cv) => cv.id === id);
-              if (inCloud) {
-                finalVitals.push(v);
-              } else {
-                const vTime = v.updatedAt || v.dateTime;
-                if (!lastSyncTime || (vTime && vTime > lastSyncTime)) {
-                  finalVitals.push(v);
-                }
-              }
-            }
+            const finalVitals: VitalMeasurement[] = [...mergedMap.values()];
             setVitals(finalVitals);
             Storage.saveVitals(finalVitals);
           }
@@ -332,18 +301,7 @@ export default function App() {
                 }
               }
             }
-            const finalReminders: DailyReminder[] = [];
-            for (const [id, r] of mergedMap.entries()) {
-              const inCloud = cloudState.reminders.some((cr) => cr.id === id);
-              if (inCloud) {
-                finalReminders.push(r);
-              } else {
-                const rTime = r.updatedAt || '';
-                if (!lastSyncTime || (rTime && rTime > lastSyncTime)) {
-                  finalReminders.push(r);
-                }
-              }
-            }
+            const finalReminders: DailyReminder[] = [...mergedMap.values()];
             setReminders(finalReminders);
             Storage.saveReminders(finalReminders);
           }
@@ -486,10 +444,16 @@ export default function App() {
           }
         );
         Storage.saveLastSyncTimestamp(new Date().toISOString());
+        syncStatus.lastSuccessAt = new Date().toISOString();
+        syncStatus.lastError = null;
         setSyncError(false);
+        setSyncErrorDetail('');
       } catch (err) {
         console.error('Failed to sync patient state to cloud:', err);
+        syncStatus.lastError = describeError(err);
+        syncStatus.lastErrorAt = new Date().toISOString();
         setSyncError(true);
+        setSyncErrorDetail((err as { code?: string })?.code || 'unknown');
       }
     }, 2000);
 
@@ -752,7 +716,10 @@ export default function App() {
 
   // إدارة أدوية المريض
   const handleAddMedication = (med: Medication) => {
-    const updated = [...medications, { ...med, updatedAt: new Date().toISOString() }];
+    const updated = [
+      ...medications.filter((m) => !m.isExample && !m.id.startsWith('med_sample_')),
+      { ...med, updatedAt: new Date().toISOString() },
+    ];
     setMedications(updated);
     Storage.saveMedications(updated);
     showToast(`تمت إضافة دواء ${med.name} بنجاح.`);
@@ -873,7 +840,7 @@ export default function App() {
       {syncError && profile?.role === 'patient' && (
         <div className="fixed top-3 left-3 z-50 bg-rose-600 text-white text-[11px] font-semibold px-3 py-1.5 rounded-full shadow-lg flex items-center gap-1.5 animate-in fade-in">
           <span className="w-2 h-2 rounded-full bg-white animate-pulse"></span>
-          <span>فشلت المزامنة السحابية</span>
+          <span>فشلت المزامنة السحابية {syncErrorDetail ? `(${syncErrorDetail})` : ''}</span>
         </div>
       )}
 

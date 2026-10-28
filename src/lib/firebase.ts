@@ -3,7 +3,7 @@
  * مشروع: rafeeqi-c8c57
  */
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, type Auth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY || '';
@@ -22,7 +22,18 @@ const firebaseConfig = {
 };
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+// الجلسة تُحفظ صراحةً (IndexedDB ثم localStorage) حتى لا يُطلب الدخول من جديد بعد كل فتح للتطبيق
+function createAuth(): Auth {
+  try {
+    return initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    });
+  } catch {
+    // مُهيّأ مسبقاً (مثلاً أثناء التطوير)
+    return getAuth(app);
+  }
+}
+export const auth = createAuth();
 export const db = initializeFirestore(app, {
   ignoreUndefinedProperties: true,
 });
